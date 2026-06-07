@@ -1,7 +1,11 @@
 # pod-lark-minutes
 
 <p align="center">
-  <img src="./assets/pod-lark-minutes-overview.svg" alt="pod-lark-minutes turns podcast and media URLs into Feishu/Lark Minutes through local audio, Drive upload, and Minutes creation." width="900">
+  <strong>English</strong> | <a href="./README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
+  <img src="./assets/pod-lark-minutes-overview.png" alt="pod-lark-minutes turns podcast and media URLs into Feishu/Lark Minutes through local audio, Drive upload, and Minutes creation." width="900">
 </p>
 
 `pod-lark-minutes` creates Feishu/Lark Minutes from podcast and media URLs.
