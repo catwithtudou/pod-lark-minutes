@@ -1,16 +1,32 @@
 {
-  "name": "pod2miao",
+  "name": "pod-lark-minutes",
   "version": "0.1.0",
-  "description": "Turn podcast/media URLs into Feishu/Lark Minutes.",
+  "description": "Create Feishu/Lark Minutes from podcast and media URLs.",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
-    "pod2miao": "./bin/pod2miao.js"
+    "pod-lark-minutes": "./bin/pod-lark-minutes.js"
   },
   "scripts": {
-    "check": "node --check bin/pod2miao.js"
+    "check": "node --check bin/pod-lark-minutes.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "keywords": [
+    "podcast",
+    "xiaoyuzhou",
+    "feishu",
+    "lark",
+    "minutes",
+    "transcription"
+  ],
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md"
+  ]
 }

@@ -11,10 +11,10 @@ const execFileAsync = promisify(execFile);
 
 function printUsage() {
   console.log(`Usage:
-  pod2miao <url> [options]
+  pod-lark-minutes <url> [options]
 
 Options:
-  --out-dir <dir>   Output directory (default: ./pod2miao-output)
+  --out-dir <dir>   Output directory (default: ./pod-lark-minutes-output)
   --audio-only      Download audio only; do not upload to Feishu Minutes
   --cleanup         Delete local audio after a successful Minutes upload
   --help            Show this help
@@ -24,7 +24,7 @@ Options:
 function parseArgs(argv) {
   const args = argv.slice(2);
   const options = {
-    outDir: path.resolve('pod2miao-output'),
+    outDir: path.resolve('pod-lark-minutes-output'),
     audioOnly: false,
     cleanup: false
   };
@@ -63,14 +63,25 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function extractMetaContent(html, key) {
-  const match = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${escapeRegExp(key)}["'][^>]*>`, 'i'));
+function getTagAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${escapeRegExp(name)}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
   if (!match) {
     return '';
   }
 
-  const content = match[0].match(/content=["']([^"']+)["']/i);
-  return content ? decodeHtml(content[1].trim()) : '';
+  return (match[1] || match[2] || match[3] || '').trim();
+}
+
+function extractMetaContent(html, key) {
+  const tags = html.match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    const metaKey = getTagAttribute(tag, 'property') || getTagAttribute(tag, 'name');
+    if (metaKey === key) {
+      const content = getTagAttribute(tag, 'content');
+      return content ? decodeHtml(content) : '';
+    }
+  }
+  return '';
 }
 
 function decodeHtml(value) {
@@ -312,7 +323,22 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(`[error] ${error.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(error => {
+    console.error(`[error] ${error.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  decodeHtml,
+  extractMetaContent,
+  extractTitle,
+  getExtensionFromContentType,
+  getExtensionFromUrl,
+  getTagAttribute,
+  isDirectAudioUrl,
+  parseArgs,
+  resolveMedia,
+  sanitizeFilename
+};

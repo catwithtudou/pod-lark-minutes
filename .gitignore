@@ -1,4 +1,9 @@
 node_modules/
+pod-lark-minutes-output/
 pod2miao-output/
 .DS_Store
 *.log
+coverage/
+dist/
+.env
+.env.*
