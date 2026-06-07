@@ -28,6 +28,7 @@ The current MVP does not fetch transcripts or smart summaries back to local file
 - Upload local audio with `lark-cli drive +upload`.
 - Create a Minutes link with `lark-cli minutes +upload`.
 - Delete the temporary Drive audio file after a successful Minutes upload by default.
+- Check for npm updates once per day and support explicit self-update.
 - Record each run as JSON metadata.
 
 ## Requirements
@@ -158,6 +159,12 @@ Keep the uploaded Drive audio file instead of deleting it after Minutes creation
 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --keep-drive-file
 ```
 
+Update the CLI explicitly from public npm:
+
+```bash
+pod-lark-minutes --self-update
+```
+
 Combine options:
 
 ```bash
@@ -172,7 +179,32 @@ pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --out-dir ./outputs
 | `--audio-only` | Resolve and download audio only; skip Drive and Minutes upload. |
 | `--cleanup` | Delete the local audio file after a successful Minutes upload. |
 | `--keep-drive-file` | Keep the uploaded Drive audio file. By default, it is deleted after Minutes creation succeeds. |
+| `--self-update` | Install the latest `pod-lark-minutes` package from public npm. |
 | `--help` | Show CLI usage. |
+
+## Updates
+
+During normal runs, the CLI checks public npm for a newer `pod-lark-minutes` version at most once per day. The check is advisory by default: if a newer version exists, the CLI prints a short update hint and continues without modifying the user's global npm installation.
+
+Update manually:
+
+```bash
+pod-lark-minutes --self-update
+```
+
+Disable update checks for CI, scripts, or offline environments:
+
+```bash
+POD_LARK_MINUTES_NO_UPDATE_CHECK=1 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx"
+```
+
+Opt in to automatic installation before a normal run:
+
+```bash
+POD_LARK_MINUTES_AUTO_UPDATE=1 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx"
+```
+
+The update check cache is stored at `~/.pod-lark-minutes/update-check.json`.
 
 ## Output And Metadata
 
@@ -215,6 +247,7 @@ The web UI may hide this detail, but the CLI needs the Drive `file_token` before
 
 ```mermaid
 flowchart LR
+  U["checkForUpdates()"] -.-> B
   A["Podcast or media URL"] --> B["resolveMedia()"]
   B --> C{"Resolver"}
   C -->|"direct audio URL"| D["mediaUrl"]
@@ -234,6 +267,8 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `parseArgs()` | Parse URL and CLI flags. |
+| `checkForUpdates()` | Check public npm for a newer package version at most once per day. |
+| `installLatestPackage()` | Run explicit or opt-in automatic self-update through npm. |
 | `resolveMedia()` | Convert supported pages, feeds, and direct audio URLs into a normalized media object. |
 | `downloadMedia()` | Download audio into the output directory and infer file extension from content type or URL. |
 | `uploadToDrive()` | Call `lark-cli drive +upload` and read the returned Drive `file_token`. |
@@ -241,7 +276,7 @@ flowchart LR
 | `deleteDriveFile()` | Delete the temporary Drive audio file after Minutes creation succeeds. |
 | `writeRunMetadata()` | Persist run metadata under `runs/<run-id>.json`. |
 
-The CLI intentionally keeps platform logic in `lark-cli` and keeps podcast-source logic in this project. That keeps the MVP small: source resolution, local download, temporary Drive upload, Minutes creation, Drive cleanup, and metadata recording.
+The CLI intentionally keeps platform logic in `lark-cli` and keeps podcast-source logic in this project. That keeps the MVP small: update notification, source resolution, local download, temporary Drive upload, Minutes creation, Drive cleanup, and metadata recording.
 
 ## Troubleshooting
 
@@ -253,6 +288,7 @@ The CLI intentionally keeps platform logic in `lark-cli` and keeps podcast-sourc
 | Drive upload does not return `data.file_token` | Check `lark-cli` auth, user scope, and Drive upload permission. |
 | Minutes upload fails | Check Minutes upload permission and whether the uploaded file type is supported by Feishu/Lark Minutes. |
 | Drive cleanup fails after Minutes creation | The Minutes link is still recorded; delete the uploaded Drive file manually or rerun with `--keep-drive-file` if you want to retain it. |
+| Update checks are noisy or unavailable | Set `POD_LARK_MINUTES_NO_UPDATE_CHECK=1` for CI, scripts, or offline environments. |
 
 ## Development
 
@@ -273,7 +309,7 @@ To verify the package can be installed without a local checkout, pack and instal
 
 ```bash
 npm pack --pack-destination /tmp
-npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.2.0.tgz
+npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.3.0.tgz
 /tmp/pod-lark-minutes-install-test/bin/pod-lark-minutes --help
 ```
 

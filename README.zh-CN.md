@@ -28,6 +28,7 @@ podcast/media URL -> local audio -> temporary Feishu/Lark Drive file -> Feishu/L
 - 通过 `lark-cli drive +upload` 上传本地音频
 - 通过 `lark-cli minutes +upload` 创建妙记链接
 - 妙记创建成功后默认删除临时上传到云空间的音频文件
+- 每天最多检查一次 npm 新版本，并支持显式自更新
 - 将每次运行记录为 JSON metadata
 
 ## 前置要求
@@ -158,6 +159,12 @@ pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --cleanup
 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --keep-drive-file
 ```
 
+从公开 npm 显式更新 CLI：
+
+```bash
+pod-lark-minutes --self-update
+```
+
 组合使用参数：
 
 ```bash
@@ -172,7 +179,32 @@ pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --out-dir ./outputs
 | `--audio-only` | 只解析并下载音频，跳过云空间和妙记上传 |
 | `--cleanup` | 妙记上传成功后删除本地音频文件 |
 | `--keep-drive-file` | 保留上传到云空间的音频文件。默认会在妙记创建成功后删除该临时文件 |
+| `--self-update` | 从公开 npm 安装最新版本的 `pod-lark-minutes` |
 | `--help` | 显示 CLI 帮助 |
+
+## 更新机制
+
+普通运行时，CLI 每天最多检查一次公开 npm 上是否有新版 `pod-lark-minutes`。默认只提示，不会自动修改用户的全局 npm 安装；如果发现新版，会输出一条简短更新提示，然后继续当前流程。
+
+手动更新：
+
+```bash
+pod-lark-minutes --self-update
+```
+
+CI、脚本或离线环境可以关闭更新检查：
+
+```bash
+POD_LARK_MINUTES_NO_UPDATE_CHECK=1 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx"
+```
+
+如果明确希望普通运行前自动安装新版，可以开启：
+
+```bash
+POD_LARK_MINUTES_AUTO_UPDATE=1 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx"
+```
+
+更新检查缓存位于 `~/.pod-lark-minutes/update-check.json`
 
 ## 输出和 metadata
 
@@ -215,6 +247,7 @@ Web UI 可能隐藏了这个细节，但 CLI 需要先拿到云空间 `file_toke
 
 ```mermaid
 flowchart LR
+  U["checkForUpdates()"] -.-> B
   A["Podcast or media URL"] --> B["resolveMedia()"]
   B --> C{"Resolver"}
   C -->|"direct audio URL"| D["mediaUrl"]
@@ -234,6 +267,8 @@ flowchart LR
 | 组件 | 职责 |
 | --- | --- |
 | `parseArgs()` | 解析 URL 和 CLI 参数 |
+| `checkForUpdates()` | 每天最多检查一次公开 npm 上的新版本 |
+| `installLatestPackage()` | 通过 npm 执行显式或用户 opt-in 的自更新 |
 | `resolveMedia()` | 将受支持的页面、feed 和直链音频转换成统一 media 对象 |
 | `downloadMedia()` | 将音频下载到输出目录，并根据 content type 或 URL 推断扩展名 |
 | `uploadToDrive()` | 调用 `lark-cli drive +upload`，读取返回的云空间 `file_token` |
@@ -241,7 +276,7 @@ flowchart LR
 | `deleteDriveFile()` | 妙记创建成功后删除临时上传到云空间的音频文件 |
 | `writeRunMetadata()` | 将运行 metadata 写入 `runs/<run-id>.json` |
 
-这个 CLI 将平台侧能力交给 `lark-cli`，将播客来源解析留在本项目内。这样 MVP 可以保持很小：来源解析、本地下载、临时云空间上传、妙记创建、云空间清理和 metadata 记录
+这个 CLI 将平台侧能力交给 `lark-cli`，将播客来源解析留在本项目内。这样 MVP 可以保持很小：更新提示、来源解析、本地下载、临时云空间上传、妙记创建、云空间清理和 metadata 记录
 
 ## 排障
 
@@ -253,6 +288,7 @@ flowchart LR
 | 云空间上传没有返回 `data.file_token` | 检查 `lark-cli` 登录状态、用户授权 scope 和云空间上传权限 |
 | 妙记上传失败 | 检查妙记上传权限，以及飞书/Lark 妙记是否支持该文件类型 |
 | 妙记创建后云空间清理失败 | 妙记链接仍会写入 metadata；可以手动删除该云空间文件，或在需要保留时使用 `--keep-drive-file` |
+| 更新检查影响脚本或离线环境 | 设置 `POD_LARK_MINUTES_NO_UPDATE_CHECK=1` 关闭更新检查 |
 
 ## 开发
 
@@ -273,7 +309,7 @@ npm pack --dry-run
 
 ```bash
 npm pack --pack-destination /tmp
-npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.2.0.tgz
+npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.3.0.tgz
 /tmp/pod-lark-minutes-install-test/bin/pod-lark-minutes --help
 ```
 

@@ -1,23 +1,31 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { pipeline } = require('stream/promises');
 const { Readable } = require('stream');
+const packageInfo = require('../package.json');
 
 const execFileAsync = promisify(execFile);
+const PACKAGE_NAME = packageInfo.name;
+const PACKAGE_VERSION = packageInfo.version;
+const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org';
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function printUsage() {
   console.log(`Usage:
   pod-lark-minutes <url> [options]
+  pod-lark-minutes --self-update
 
 Options:
   --out-dir <dir>   Output directory (default: ./pod-lark-minutes-output)
   --audio-only      Download audio only; do not upload to Feishu Minutes
   --cleanup         Delete local audio after a successful Minutes upload
   --keep-drive-file Keep uploaded Drive audio after a successful Minutes upload
+  --self-update     Install the latest pod-lark-minutes from public npm
   --help            Show this help
 `);
 }
@@ -28,7 +36,8 @@ function parseArgs(argv) {
     outDir: path.resolve('pod-lark-minutes-output'),
     audioOnly: false,
     cleanup: false,
-    keepDriveFile: false
+    keepDriveFile: false,
+    selfUpdate: false
   };
 
   let url = null;
@@ -42,6 +51,8 @@ function parseArgs(argv) {
       options.cleanup = true;
     } else if (arg === '--keep-drive-file') {
       options.keepDriveFile = true;
+    } else if (arg === '--self-update') {
+      options.selfUpdate = true;
     } else if (arg === '--out-dir') {
       const value = args[i + 1];
       if (!value) {
@@ -57,6 +68,147 @@ function parseArgs(argv) {
   }
 
   return { url, options };
+}
+
+function parseVersion(value) {
+  return String(value)
+    .split('-')[0]
+    .split('.')
+    .map(part => Number.parseInt(part, 10) || 0);
+}
+
+function isNewerVersion(latestVersion, currentVersion) {
+  const latest = parseVersion(latestVersion);
+  const current = parseVersion(currentVersion);
+  const maxLength = Math.max(latest.length, current.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const latestPart = latest[index] || 0;
+    const currentPart = current[index] || 0;
+    if (latestPart > currentPart) {
+      return true;
+    }
+    if (latestPart < currentPart) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function getUpdateCachePath() {
+  const homeDir = os.homedir() || os.tmpdir();
+  return path.join(homeDir, '.pod-lark-minutes', 'update-check.json');
+}
+
+function readUpdateCache(cachePath) {
+  try {
+    return JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeUpdateCache(cachePath, data) {
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  fs.writeFileSync(cachePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function isEnvEnabled(value) {
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
+async function fetchLatestVersion() {
+  const response = await fetch(`${PUBLIC_NPM_REGISTRY}/${PACKAGE_NAME}/latest`, {
+    headers: {
+      Accept: 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to check npm version: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  if (!data.version) {
+    throw new Error('npm registry response did not include version');
+  }
+  return data.version;
+}
+
+async function runNpm(args) {
+  const { stdout, stderr } = await execFileAsync('npm', args, {
+    maxBuffer: 20 * 1024 * 1024
+  });
+  if (stderr && stderr.trim()) {
+    process.stderr.write(stderr);
+  }
+  return { stdout, stderr };
+}
+
+async function installLatestPackage(runner = runNpm) {
+  return runner([
+    'install',
+    '-g',
+    `${PACKAGE_NAME}@latest`,
+    `--registry=${PUBLIC_NPM_REGISTRY}`
+  ]);
+}
+
+async function checkForUpdates(options = {}, deps = {}) {
+  const env = deps.env || process.env;
+  if (isEnvEnabled(env.POD_LARK_MINUTES_NO_UPDATE_CHECK)) {
+    return { checked: false, reason: 'disabled' };
+  }
+
+  const now = deps.now || new Date();
+  const cachePath = deps.cachePath || getUpdateCachePath();
+  if (!options.force) {
+    const cache = readUpdateCache(cachePath);
+    const lastCheckedAt = cache.lastCheckedAt ? new Date(cache.lastCheckedAt) : null;
+    if (lastCheckedAt && !Number.isNaN(lastCheckedAt.getTime()) && now - lastCheckedAt < UPDATE_CHECK_INTERVAL_MS) {
+      return { checked: false, reason: 'recently-checked' };
+    }
+  }
+
+  const latestVersion = await (deps.fetchLatestVersion || fetchLatestVersion)();
+  const currentVersion = deps.currentVersion || PACKAGE_VERSION;
+  writeUpdateCache(cachePath, {
+    lastCheckedAt: now.toISOString(),
+    latestVersion
+  });
+
+  if (!isNewerVersion(latestVersion, currentVersion)) {
+    return {
+      checked: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: false
+    };
+  }
+
+  const notify = deps.notify || (() => {});
+  const autoUpdate = isEnvEnabled(env.POD_LARK_MINUTES_AUTO_UPDATE);
+  if (autoUpdate) {
+    await (deps.installLatestPackage || installLatestPackage)();
+    notify(`[update] updated ${PACKAGE_NAME} from ${currentVersion} to ${latestVersion}`);
+    return {
+      checked: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: true,
+      autoUpdated: true
+    };
+  }
+
+  notify(`[update] ${PACKAGE_NAME} ${latestVersion} is available (current ${currentVersion}). Run: ${PACKAGE_NAME} --self-update`);
+  return {
+    checked: true,
+    currentVersion,
+    latestVersion,
+    updateAvailable: true,
+    autoUpdated: false
+  };
 }
 
 function isDirectAudioUrl(url) {
@@ -339,9 +491,29 @@ function writeRunMetadata(outDir, data) {
 
 async function main() {
   const { url, options } = parseArgs(process.argv);
-  if (options.help || !url) {
+  if (options.help) {
     printUsage();
-    process.exit(options.help ? 0 : 1);
+    process.exit(0);
+  }
+
+  if (options.selfUpdate) {
+    console.log(`[self-update] installing latest ${PACKAGE_NAME} from public npm`);
+    await installLatestPackage();
+    console.log('[self-update] done');
+    process.exit(0);
+  }
+
+  if (!url) {
+    printUsage();
+    process.exit(1);
+  }
+
+  try {
+    await checkForUpdates({}, {
+      notify: message => console.warn(message)
+    });
+  } catch {
+    // Update checks should never block the podcast-to-Minutes workflow.
   }
 
   const audioDir = path.join(options.outDir, 'audio');
@@ -389,13 +561,17 @@ if (require.main === module) {
 }
 
 module.exports = {
+  checkForUpdates,
   decodeHtml,
+  fetchLatestVersion,
   extractMetaContent,
   extractTitle,
   getExtensionFromContentType,
   getExtensionFromUrl,
   getTagAttribute,
+  installLatestPackage,
   isDirectAudioUrl,
+  isNewerVersion,
   parseArgs,
   resolveMedia,
   sanitizeFilename,

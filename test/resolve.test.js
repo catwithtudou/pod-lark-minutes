@@ -1,16 +1,26 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
+  checkForUpdates,
+  installLatestPackage,
   extractMetaContent,
   extractTitle,
   getTagAttribute,
   isDirectAudioUrl,
+  isNewerVersion,
   parseArgs,
   sanitizeFilename,
   uploadAudioToMinutes,
   deleteDriveFile
 } = require('../bin/pod-lark-minutes');
+
+function tempCachePath() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pod-lark-minutes-test-')), 'update-check.json');
+}
 
 test('extracts meta content regardless of attribute order', () => {
   const html = `
@@ -48,10 +58,119 @@ test('parses keep drive file option', () => {
   assert.equal(options.keepDriveFile, true);
 });
 
+test('parses self update option without a URL', () => {
+  const { url, options } = parseArgs([
+    'node',
+    'pod-lark-minutes',
+    '--self-update'
+  ]);
+
+  assert.equal(url, null);
+  assert.equal(options.selfUpdate, true);
+});
+
 test('detects audio URLs and sanitizes filenames', () => {
   assert.equal(isDirectAudioUrl('https://example.com/a.m4a?download=1'), true);
   assert.equal(isDirectAudioUrl('https://example.com/page'), false);
   assert.equal(sanitizeFilename('E01: hello / world?'), 'E01_hello_world');
+});
+
+test('compares package versions', () => {
+  assert.equal(isNewerVersion('0.3.0', '0.2.0'), true);
+  assert.equal(isNewerVersion('0.2.1', '0.2.0'), true);
+  assert.equal(isNewerVersion('0.2.0', '0.2.0'), false);
+  assert.equal(isNewerVersion('0.1.9', '0.2.0'), false);
+});
+
+test('checks for updates and warns without auto installing by default', async () => {
+  const messages = [];
+  const cachePath = tempCachePath();
+  let updateCalled = false;
+
+  const result = await checkForUpdates({ force: true }, {
+    cachePath,
+    currentVersion: '0.2.0',
+    env: {},
+    fetchLatestVersion: async () => '0.3.0',
+    notify: message => messages.push(message),
+    installLatestPackage: async () => {
+      updateCalled = true;
+    }
+  });
+
+  assert.equal(result.checked, true);
+  assert.equal(result.updateAvailable, true);
+  assert.equal(result.autoUpdated, false);
+  assert.equal(updateCalled, false);
+  assert.match(messages.join('\n'), /0\.3\.0/);
+  assert.match(fs.readFileSync(cachePath, 'utf8'), /lastCheckedAt/);
+});
+
+test('skips update checks when recently checked', async () => {
+  const cachePath = tempCachePath();
+  fs.writeFileSync(cachePath, JSON.stringify({ lastCheckedAt: '2026-06-07T00:00:00.000Z' }), 'utf8');
+
+  const result = await checkForUpdates({}, {
+    cachePath,
+    now: new Date('2026-06-07T12:00:00.000Z'),
+    fetchLatestVersion: async () => {
+      throw new Error('should not fetch');
+    }
+  });
+
+  assert.deepEqual(result, {
+    checked: false,
+    reason: 'recently-checked'
+  });
+});
+
+test('skips update checks when disabled by environment', async () => {
+  const result = await checkForUpdates({ force: true }, {
+    env: { POD_LARK_MINUTES_NO_UPDATE_CHECK: '1' },
+    fetchLatestVersion: async () => {
+      throw new Error('should not fetch');
+    }
+  });
+
+  assert.deepEqual(result, {
+    checked: false,
+    reason: 'disabled'
+  });
+});
+
+test('auto installs updates only when enabled by environment', async () => {
+  const calls = [];
+
+  const result = await checkForUpdates({ force: true }, {
+    cachePath: tempCachePath(),
+    currentVersion: '0.2.0',
+    env: { POD_LARK_MINUTES_AUTO_UPDATE: '1' },
+    fetchLatestVersion: async () => '0.3.0',
+    installLatestPackage: async () => {
+      calls.push('install');
+      return { stdout: 'updated' };
+    }
+  });
+
+  assert.equal(result.updateAvailable, true);
+  assert.equal(result.autoUpdated, true);
+  assert.deepEqual(calls, ['install']);
+});
+
+test('self update installs the latest public npm package', async () => {
+  let capturedArgs = null;
+
+  await installLatestPackage(async args => {
+    capturedArgs = args;
+    return { stdout: 'updated' };
+  });
+
+  assert.deepEqual(capturedArgs, [
+    'install',
+    '-g',
+    'pod-lark-minutes@latest',
+    '--registry=https://registry.npmjs.org'
+  ]);
 });
 
 test('deletes uploaded drive file by default after creating minutes', async () => {

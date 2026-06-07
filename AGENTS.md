@@ -31,6 +31,8 @@ CLI 自身只负责解析音频来源、下载音频、把飞书/Lark 云空间�
 | 飞书云空间上传 | 通过 `lark-cli drive +upload` 获取 `file_token` | `uploadToDrive()` |
 | 飞书妙记创建 | 通过 `lark-cli minutes +upload` 获取 `minute_url` | `createMinute()` |
 | 飞书云空间清理 | 妙记创建成功后默认删除临时 Drive 音频文件 | `deleteDriveFile()` |
+| npm 版本检查 | 普通运行时每天最多检查一次公开 npm 新版本，只提示不默认安装 | `checkForUpdates()` |
+| CLI 自更新 | 通过显式 `--self-update` 或 opt-in 环境变量执行 npm 安装 | `installLatestPackage()` |
 | 运行记录 | 写入 `pod-lark-minutes-output/runs/<run-id>.json` | `writeRunMetadata()` |
 
 ## 边界与约束
@@ -42,6 +44,9 @@ CLI 自身只负责解析音频来源、下载音频、把飞书/Lark 云空间�
 - 上传链路依赖本机 `lark-cli`、飞书/Lark 用户授权和相关权限 scope；本地单元测试不应强依赖真实飞书环境。
 - `lark-cli minutes +upload` 只接受已上传到云空间的 `file_token`；Drive 文件在本项目中是临时中转文件，妙记创建成功后默认删除。
 - 仅当用户显式要求保留云空间原音频时使用 `--keep-drive-file`。
+- 更新检查只应作为提示能力，普通运行不得默认静默修改用户全局 npm 安装。
+- 只有用户显式执行 `--self-update` 或设置 `POD_LARK_MINUTES_AUTO_UPDATE=1` 时，才允许触发 `npm install -g pod-lark-minutes@latest --registry=https://registry.npmjs.org`。
+- CI、脚本或离线环境可通过 `POD_LARK_MINUTES_NO_UPDATE_CHECK=1` 关闭更新检查；更新检查失败不应阻断播客到妙记主流程。
 - 默认输出目录是 `pod-lark-minutes-output/`，该目录已在 `.gitignore` 中忽略。
 - `.env`、`.env.*`、本地音频、运行输出和日志不应提交。不要在公开文档、测试 fixture 或提交记录中记录飞书/Lark token、auth URL、内部妙记链接、内部文件 token 或个人账号信息。
 
@@ -62,6 +67,7 @@ local audio -> lark-cli drive +upload -> file_token -> lark-cli minutes +upload 
 ```bash
 npm run check
 npm test
+POD_LARK_MINUTES_NO_UPDATE_CHECK=1 node bin/pod-lark-minutes.js --help
 ```
 
 涉及来源解析时，优先补充网络无关的单元测试。涉及真实上传时，先使用 `--audio-only` 验证解析和下载，再在 `lark-cli` 授权可用时验证完整链路：
@@ -80,5 +86,6 @@ node bin/pod-lark-minutes.js "<url>"
 | 仅解析不下载 | 可以考虑增加 `--dry-run` 或 `resolve` 命令，用于查看媒体元数据 |
 | 新增来源平台 | 先用真实页面或 fixture 验证解析方式，再纳入支持范围 |
 | 云空间文件清理 | 默认删除临时 Drive 音频；保留行为通过 `--keep-drive-file` 显式启用 |
+| 更新机制 | 默认每日提示；显式 `--self-update` 手动更新；自动安装必须由环境变量 opt-in |
 | npm 发布 | 发布前确认 README 语言策略、包名可用性和公开说明范围 |
 | 完整上传测试 | 不提交下载音频、飞书/Lark token、内部链接或个人身份信息 |

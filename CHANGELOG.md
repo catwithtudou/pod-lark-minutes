@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-06-07
+
+- Check public npm for a newer version at most once per day during normal CLI runs.
+- Add `--self-update` to explicitly install the latest public npm package.
+- Add `POD_LARK_MINUTES_NO_UPDATE_CHECK=1` to disable update checks and `POD_LARK_MINUTES_AUTO_UPDATE=1` to opt in to automatic installation.
+
 ## 0.2.0 - 2026-06-07
 
 - Delete the uploaded Feishu/Lark Drive audio file by default after Minutes creation succeeds.
