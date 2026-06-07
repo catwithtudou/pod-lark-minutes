@@ -4,6 +4,14 @@
   "description": "Create Feishu/Lark Minutes from podcast and media URLs.",
   "license": "MIT",
   "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catwithtudou/pod-lark-minutes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/catwithtudou/pod-lark-minutes/issues"
+  },
+  "homepage": "https://github.com/catwithtudou/pod-lark-minutes#readme",
   "bin": {
     "pod-lark-minutes": "./bin/pod-lark-minutes.js"
   },
@@ -24,6 +32,7 @@
   ],
   "files": [
     "bin",
+    "assets",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",

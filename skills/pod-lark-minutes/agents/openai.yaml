@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pod Lark Minutes"
+  short_description: "Install and run podcast-to-Lark Minutes CLI"
+  default_prompt: "Use $pod-lark-minutes to install the CLI and create a Lark Minutes link from this podcast URL."
