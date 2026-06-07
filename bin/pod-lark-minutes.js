@@ -17,6 +17,7 @@ Options:
   --out-dir <dir>   Output directory (default: ./pod-lark-minutes-output)
   --audio-only      Download audio only; do not upload to Feishu Minutes
   --cleanup         Delete local audio after a successful Minutes upload
+  --keep-drive-file Keep uploaded Drive audio after a successful Minutes upload
   --help            Show this help
 `);
 }
@@ -26,7 +27,8 @@ function parseArgs(argv) {
   const options = {
     outDir: path.resolve('pod-lark-minutes-output'),
     audioOnly: false,
-    cleanup: false
+    cleanup: false,
+    keepDriveFile: false
   };
 
   let url = null;
@@ -38,6 +40,8 @@ function parseArgs(argv) {
       options.audioOnly = true;
     } else if (arg === '--cleanup') {
       options.cleanup = true;
+    } else if (arg === '--keep-drive-file') {
+      options.keepDriveFile = true;
     } else if (arg === '--out-dir') {
       const value = args[i + 1];
       if (!value) {
@@ -263,6 +267,67 @@ async function createMinute(fileToken) {
   ]);
 }
 
+async function deleteDriveFile(fileToken, runner = runLarkCli) {
+  return runner([
+    'drive',
+    '+delete',
+    '--as',
+    'user',
+    '--file-token',
+    fileToken,
+    '--type',
+    'file',
+    '--yes',
+    '--json'
+  ]);
+}
+
+async function uploadAudioToMinutes(audioPath, options = {}, deps = {}) {
+  const upload = deps.uploadToDrive || uploadToDrive;
+  const create = deps.createMinute || createMinute;
+  const deleteDrive = deps.deleteDriveFile || deleteDriveFile;
+  const log = deps.log || (() => {});
+  const warn = deps.warn || (() => {});
+
+  log('[drive-upload] uploading audio to Feishu Drive');
+  const driveResult = await upload(audioPath);
+  const run = {
+    drive: driveResult.data || driveResult,
+    driveDeleted: false,
+    driveRetained: false
+  };
+  const fileToken = run.drive && run.drive.file_token;
+  if (!fileToken) {
+    throw new Error('Drive upload did not return data.file_token');
+  }
+
+  log('[minutes-upload] creating Feishu Minutes');
+  const minutesResult = await create(fileToken);
+  run.minutes = minutesResult.data || minutesResult;
+
+  if (options.keepDriveFile) {
+    run.driveRetained = true;
+    log('[drive-cleanup] kept uploaded Drive audio file');
+    return run;
+  }
+
+  log('[drive-cleanup] deleting uploaded Drive audio file');
+  try {
+    const deleteResult = await deleteDrive(fileToken);
+    run.driveCleanup = deleteResult.data || deleteResult;
+    run.driveDeleted = Boolean(run.driveCleanup && run.driveCleanup.deleted);
+    log('[drive-cleanup] deleted uploaded Drive audio file');
+  } catch (error) {
+    run.driveCleanup = {
+      deleted: false,
+      error: error.message
+    };
+    warn(`[drive-cleanup] failed to delete uploaded Drive audio file: ${error.message}`);
+  }
+
+  return run;
+}
+
 function writeRunMetadata(outDir, data) {
   const runsDir = path.join(outDir, 'runs');
   fs.mkdirSync(runsDir, { recursive: true });
@@ -295,17 +360,10 @@ async function main() {
   };
 
   if (!options.audioOnly) {
-    console.log('[drive-upload] uploading audio to Feishu Drive');
-    const driveResult = await uploadToDrive(audioPath);
-    run.drive = driveResult.data || driveResult;
-    const fileToken = driveResult.data && driveResult.data.file_token;
-    if (!fileToken) {
-      throw new Error('Drive upload did not return data.file_token');
-    }
-
-    console.log('[minutes-upload] creating Feishu Minutes');
-    const minutesResult = await createMinute(fileToken);
-    run.minutes = minutesResult.data || minutesResult;
+    Object.assign(run, await uploadAudioToMinutes(audioPath, options, {
+      log: message => console.log(message),
+      warn: message => console.warn(message)
+    }));
     console.log(`[minutes-upload] ${run.minutes.minute_url}`);
 
     if (options.cleanup) {
@@ -340,5 +398,7 @@ module.exports = {
   isDirectAudioUrl,
   parseArgs,
   resolveMedia,
-  sanitizeFilename
+  sanitizeFilename,
+  deleteDriveFile,
+  uploadAudioToMinutes
 };

@@ -5,10 +5,10 @@
 `pod-lark-minutes` 是一个本地 Node.js CLI，用于把播客或媒体 URL 转成飞书/Lark 妙记链接。当前项目保持单一主流程：
 
 ```text
-podcast/media URL -> local audio -> Feishu/Lark Drive file -> Feishu/Lark Minutes
+podcast/media URL -> local audio -> temporary Feishu/Lark Drive file -> Feishu/Lark Minutes
 ```
 
-CLI 自身只负责解析音频来源、下载音频、调用 `lark-cli` 上传到云空间并创建妙记；转写、智能总结和妙记内容处理由飞书/Lark 妙记侧完成。
+CLI 自身只负责解析音频来源、下载音频、把飞书/Lark 云空间作为必需的临时上传层并创建妙记；转写、智能总结和妙记内容处理由飞书/Lark 妙记侧完成。
 
 当前 MVP 不要求把飞书/Lark 妙记里的转写稿或智能摘要拉回本地文件。除非需求明确变化，不要把本地转写、摘要生成或妙记内容同步作为默认方向。
 
@@ -30,6 +30,7 @@ CLI 自身只负责解析音频来源、下载音频、调用 `lark-cli` 上传�
 | 本地音频下载 | 根据响应 `content-type` 或 URL 扩展名确定文件后缀 | `downloadMedia()` |
 | 飞书云空间上传 | 通过 `lark-cli drive +upload` 获取 `file_token` | `uploadToDrive()` |
 | 飞书妙记创建 | 通过 `lark-cli minutes +upload` 获取 `minute_url` | `createMinute()` |
+| 飞书云空间清理 | 妙记创建成功后默认删除临时 Drive 音频文件 | `deleteDriveFile()` |
 | 运行记录 | 写入 `pod-lark-minutes-output/runs/<run-id>.json` | `writeRunMetadata()` |
 
 ## 边界与约束
@@ -39,6 +40,8 @@ CLI 自身只负责解析音频来源、下载音频、调用 `lark-cli` 上传�
 - 新增来源解析器时，应复用 `resolveMedia()` 当前返回结构：`sourceUrl`、`mediaUrl`、`title`、`description`、`resolver`。
 - 解析逻辑应优先使用可测试、无网络依赖的 fixture 覆盖；避免把平台页面的临时 HTML 结构写成不可维护的强耦合逻辑。
 - 上传链路依赖本机 `lark-cli`、飞书/Lark 用户授权和相关权限 scope；本地单元测试不应强依赖真实飞书环境。
+- `lark-cli minutes +upload` 只接受已上传到云空间的 `file_token`；Drive 文件在本项目中是临时中转文件，妙记创建成功后默认删除。
+- 仅当用户显式要求保留云空间原音频时使用 `--keep-drive-file`。
 - 默认输出目录是 `pod-lark-minutes-output/`，该目录已在 `.gitignore` 中忽略。
 - `.env`、`.env.*`、本地音频、运行输出和日志不应提交。不要在公开文档、测试 fixture 或提交记录中记录飞书/Lark token、auth URL、内部妙记链接、内部文件 token 或个人账号信息。
 
@@ -47,10 +50,10 @@ CLI 自身只负责解析音频来源、下载音频、调用 `lark-cli` 上传�
 飞书/Lark 侧当前通过 `lark-cli` 完成两步上传：
 
 ```text
-local audio -> lark-cli drive +upload -> file_token -> lark-cli minutes +upload -> minute_url
+local audio -> lark-cli drive +upload -> file_token -> lark-cli minutes +upload -> minute_url -> drive +delete
 ```
 
-`file_token` 只用于创建妙记，不应写入公开文档。是否删除云空间里的原始文件会影响妙记可用性时，先验证平台行为，再增加对应清理选项。
+`file_token` 只用于创建妙记，不应写入公开文档。已通过真实样本验证：妙记创建成功后删除 Drive 原始音频，妙记基础信息与媒体下载 URL 仍可访问。后续改动若调整清理语义，需要重新验证真实链路。
 
 ## 验证方式
 
@@ -76,6 +79,6 @@ node bin/pod-lark-minutes.js "<url>"
 | --- | --- |
 | 仅解析不下载 | 可以考虑增加 `--dry-run` 或 `resolve` 命令，用于查看媒体元数据 |
 | 新增来源平台 | 先用真实页面或 fixture 验证解析方式，再纳入支持范围 |
-| 云空间文件清理 | 先确认删除原始 Drive 文件后妙记是否仍可用，再设计选项语义 |
+| 云空间文件清理 | 默认删除临时 Drive 音频；保留行为通过 `--keep-drive-file` 显式启用 |
 | npm 发布 | 发布前确认 README 语言策略、包名可用性和公开说明范围 |
 | 完整上传测试 | 不提交下载音频、飞书/Lark token、内部链接或个人身份信息 |

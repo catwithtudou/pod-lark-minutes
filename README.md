@@ -13,10 +13,10 @@
 It keeps the workflow intentionally small:
 
 ```text
-podcast/media URL -> local audio -> Feishu/Lark Drive file -> Feishu/Lark Minutes
+podcast/media URL -> local audio -> temporary Feishu/Lark Drive file -> Feishu/Lark Minutes
 ```
 
-Feishu/Lark Minutes handles transcription and smart summary after the upload. This CLI focuses on resolving the audio source, downloading it locally, uploading it to Feishu/Lark Drive, and creating the Minutes entry.
+Feishu/Lark Minutes handles transcription and smart summary after the upload. This CLI focuses on resolving the audio source, downloading it locally, using Feishu/Lark Drive as the required temporary upload layer, and creating the Minutes entry.
 
 The current MVP does not fetch transcripts or smart summaries back to local files.
 
@@ -27,6 +27,7 @@ The current MVP does not fetch transcripts or smart summaries back to local file
 - Resolve the first enclosure from basic RSS feeds.
 - Upload local audio with `lark-cli drive +upload`.
 - Create a Minutes link with `lark-cli minutes +upload`.
+- Delete the temporary Drive audio file after a successful Minutes upload by default.
 - Record each run as JSON metadata.
 
 ## Requirements
@@ -55,7 +56,7 @@ npm install -g pod-lark-minutes
 pod-lark-minutes --help
 ```
 
-If the first npm release has not been published yet, install from GitHub:
+Alternatively, install from GitHub:
 
 ```bash
 npm install -g github:catwithtudou/pod-lark-minutes
@@ -135,6 +136,12 @@ Remove the local audio file after a successful Minutes upload:
 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --cleanup
 ```
 
+Keep the uploaded Drive audio file instead of deleting it after Minutes creation:
+
+```bash
+pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --keep-drive-file
+```
+
 Combine options:
 
 ```bash
@@ -148,6 +155,7 @@ pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --out-dir ./outputs
 | `--out-dir <dir>` | Output directory. Defaults to `./pod-lark-minutes-output`. |
 | `--audio-only` | Resolve and download audio only; skip Drive and Minutes upload. |
 | `--cleanup` | Delete the local audio file after a successful Minutes upload. |
+| `--keep-drive-file` | Keep the uploaded Drive audio file. By default, it is deleted after Minutes creation succeeds. |
 | `--help` | Show CLI usage. |
 
 ## Output And Metadata
@@ -160,9 +168,11 @@ pod-lark-minutes-output/
     <run-id>.json
 ```
 
-The run JSON records the source URL, resolved media URL, local audio path, Drive upload result, and `minute_url` when a Minutes upload is created.
+The run JSON records the source URL, resolved media URL, local audio path, Drive upload result, Drive cleanup status, and `minute_url` when a Minutes upload is created.
 
 Downloaded audio and run metadata can contain private podcast URLs, local paths, Drive upload responses, and Minutes links. Do not commit `pod-lark-minutes-output/`, logs, tokens, auth URLs, internal Feishu/Lark links, or generated audio files.
+
+After a successful Minutes upload, the uploaded Drive audio file is deleted by default. Use `--keep-drive-file` only when you want to retain that Drive file.
 
 `--cleanup` removes the local audio only after a successful Minutes upload. When using `--audio-only`, delete the downloaded audio manually if you do not need to keep it.
 
@@ -183,7 +193,7 @@ The Feishu/Lark side is a two-step flow:
 local file -> lark-cli drive +upload -> file_token -> lark-cli minutes +upload -> minute_url
 ```
 
-The web UI may hide this detail, but the CLI needs the Drive `file_token` before it can create a Minutes entry.
+The web UI may hide this detail, but the CLI needs the Drive `file_token` before it can create a Minutes entry. The Drive file is treated as a temporary bridge and is deleted after Minutes creation succeeds unless `--keep-drive-file` is set.
 
 ## Technical Architecture
 
@@ -198,9 +208,11 @@ flowchart LR
   E --> F["Local audio file"]
   F -->|"lark-cli drive +upload"| G["Drive file_token"]
   G -->|"lark-cli minutes +upload"| H["Minutes URL"]
+  H --> J["delete temporary Drive file"]
   B --> I["Run metadata JSON"]
   E --> I
   H --> I
+  J --> I
 ```
 
 | Component | Responsibility |
@@ -210,9 +222,10 @@ flowchart LR
 | `downloadMedia()` | Download audio into the output directory and infer file extension from content type or URL. |
 | `uploadToDrive()` | Call `lark-cli drive +upload` and read the returned Drive `file_token`. |
 | `createMinute()` | Call `lark-cli minutes +upload` with the Drive `file_token`. |
+| `deleteDriveFile()` | Delete the temporary Drive audio file after Minutes creation succeeds. |
 | `writeRunMetadata()` | Persist run metadata under `runs/<run-id>.json`. |
 
-The CLI intentionally keeps platform logic in `lark-cli` and keeps podcast-source logic in this project. That keeps the MVP small: source resolution, local download, Drive upload, Minutes creation, and metadata recording.
+The CLI intentionally keeps platform logic in `lark-cli` and keeps podcast-source logic in this project. That keeps the MVP small: source resolution, local download, temporary Drive upload, Minutes creation, Drive cleanup, and metadata recording.
 
 ## Troubleshooting
 
@@ -223,6 +236,7 @@ The CLI intentionally keeps platform logic in `lark-cli` and keeps podcast-sourc
 | `lark-cli` command is not found | Install `lark-cli` and make sure it is available on `PATH`. |
 | Drive upload does not return `data.file_token` | Check `lark-cli` auth, user scope, and Drive upload permission. |
 | Minutes upload fails | Check Minutes upload permission and whether the uploaded file type is supported by Feishu/Lark Minutes. |
+| Drive cleanup fails after Minutes creation | The Minutes link is still recorded; delete the uploaded Drive file manually or rerun with `--keep-drive-file` if you want to retain it. |
 
 ## Development
 
@@ -243,7 +257,7 @@ To verify the package can be installed without a local checkout, pack and instal
 
 ```bash
 npm pack --pack-destination /tmp
-npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.1.0.tgz
+npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.2.0.tgz
 /tmp/pod-lark-minutes-install-test/bin/pod-lark-minutes --help
 ```
 

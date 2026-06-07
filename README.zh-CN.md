@@ -13,10 +13,10 @@
 它刻意保持一条很小的工作流：
 
 ```text
-podcast/media URL -> local audio -> Feishu/Lark Drive file -> Feishu/Lark Minutes
+podcast/media URL -> local audio -> temporary Feishu/Lark Drive file -> Feishu/Lark Minutes
 ```
 
-上传完成后，转写和智能摘要由飞书/Lark 妙记生成。这个 CLI 只负责解析音频来源、下载到本地、上传到飞书/Lark 云空间，并创建妙记
+上传完成后，转写和智能摘要由飞书/Lark 妙记生成。这个 CLI 只负责解析音频来源、下载到本地、把飞书/Lark 云空间作为必需的临时上传层，并创建妙记
 
 当前 MVP 不会把妙记里的转写稿或智能摘要再拉回本地文件
 
@@ -27,6 +27,7 @@ podcast/media URL -> local audio -> Feishu/Lark Drive file -> Feishu/Lark Minute
 - 从基础 RSS feed 中解析第一个 `<enclosure>`
 - 通过 `lark-cli drive +upload` 上传本地音频
 - 通过 `lark-cli minutes +upload` 创建妙记链接
+- 妙记创建成功后默认删除临时上传到云空间的音频文件
 - 将每次运行记录为 JSON metadata
 
 ## 前置要求
@@ -55,7 +56,7 @@ npm install -g pod-lark-minutes
 pod-lark-minutes --help
 ```
 
-如果第一个 npm 版本还没有发布，可以从 GitHub 安装：
+也可以从 GitHub 安装：
 
 ```bash
 npm install -g github:catwithtudou/pod-lark-minutes
@@ -135,6 +136,12 @@ pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --out-dir ./outputs
 pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --cleanup
 ```
 
+妙记创建成功后保留云空间里的上传音频：
+
+```bash
+pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --keep-drive-file
+```
+
 组合使用参数：
 
 ```bash
@@ -148,6 +155,7 @@ pod-lark-minutes "https://www.xiaoyuzhoufm.com/episode/xxxx" --out-dir ./outputs
 | `--out-dir <dir>` | 输出目录，默认是 `./pod-lark-minutes-output` |
 | `--audio-only` | 只解析并下载音频，跳过云空间和妙记上传 |
 | `--cleanup` | 妙记上传成功后删除本地音频文件 |
+| `--keep-drive-file` | 保留上传到云空间的音频文件。默认会在妙记创建成功后删除该临时文件 |
 | `--help` | 显示 CLI 帮助 |
 
 ## 输出和 metadata
@@ -160,9 +168,11 @@ pod-lark-minutes-output/
     <run-id>.json
 ```
 
-运行 JSON 会记录 source URL、解析出的 media URL、本地音频路径、云空间上传结果，以及创建成功后的 `minute_url`
+运行 JSON 会记录 source URL、解析出的 media URL、本地音频路径、云空间上传结果、云空间清理状态，以及创建成功后的 `minute_url`
 
 下载音频和运行 metadata 可能包含私有播客链接、本地路径、云空间上传响应和妙记链接。不要提交 `pod-lark-minutes-output/`、日志、token、auth URL、内部飞书/Lark 链接或生成的音频文件
+
+妙记上传成功后，上传到云空间的音频文件默认会被删除。只有需要保留云空间原文件时，才使用 `--keep-drive-file`。
 
 `--cleanup` 只会在妙记上传成功后删除本地音频。使用 `--audio-only` 时，如果不需要保留音频，需要手动删除下载结果
 
@@ -183,7 +193,7 @@ pod-lark-minutes-output/
 local file -> lark-cli drive +upload -> file_token -> lark-cli minutes +upload -> minute_url
 ```
 
-Web UI 可能隐藏了这个细节，但 CLI 需要先拿到云空间 `file_token`，再创建妙记
+Web UI 可能隐藏了这个细节，但 CLI 需要先拿到云空间 `file_token`，再创建妙记。云空间文件会被视为临时中转文件，妙记创建成功后默认删除，除非设置 `--keep-drive-file`
 
 ## 技术架构
 
@@ -198,9 +208,11 @@ flowchart LR
   E --> F["Local audio file"]
   F -->|"lark-cli drive +upload"| G["Drive file_token"]
   G -->|"lark-cli minutes +upload"| H["Minutes URL"]
+  H --> J["delete temporary Drive file"]
   B --> I["Run metadata JSON"]
   E --> I
   H --> I
+  J --> I
 ```
 
 | 组件 | 职责 |
@@ -210,9 +222,10 @@ flowchart LR
 | `downloadMedia()` | 将音频下载到输出目录，并根据 content type 或 URL 推断扩展名 |
 | `uploadToDrive()` | 调用 `lark-cli drive +upload`，读取返回的云空间 `file_token` |
 | `createMinute()` | 使用云空间 `file_token` 调用 `lark-cli minutes +upload` |
+| `deleteDriveFile()` | 妙记创建成功后删除临时上传到云空间的音频文件 |
 | `writeRunMetadata()` | 将运行 metadata 写入 `runs/<run-id>.json` |
 
-这个 CLI 将平台侧能力交给 `lark-cli`，将播客来源解析留在本项目内。这样 MVP 可以保持很小：来源解析、本地下载、云空间上传、妙记创建和 metadata 记录
+这个 CLI 将平台侧能力交给 `lark-cli`，将播客来源解析留在本项目内。这样 MVP 可以保持很小：来源解析、本地下载、临时云空间上传、妙记创建、云空间清理和 metadata 记录
 
 ## 排障
 
@@ -223,6 +236,7 @@ flowchart LR
 | 找不到 `lark-cli` 命令 | 安装 `lark-cli`，并确认它在 `PATH` 中 |
 | 云空间上传没有返回 `data.file_token` | 检查 `lark-cli` 登录状态、用户授权 scope 和云空间上传权限 |
 | 妙记上传失败 | 检查妙记上传权限，以及飞书/Lark 妙记是否支持该文件类型 |
+| 妙记创建后云空间清理失败 | 妙记链接仍会写入 metadata；可以手动删除该云空间文件，或在需要保留时使用 `--keep-drive-file` |
 
 ## 开发
 
@@ -243,7 +257,7 @@ npm pack --dry-run
 
 ```bash
 npm pack --pack-destination /tmp
-npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.1.0.tgz
+npm install --prefix /tmp/pod-lark-minutes-install-test -g /tmp/pod-lark-minutes-0.2.0.tgz
 /tmp/pod-lark-minutes-install-test/bin/pod-lark-minutes --help
 ```
 

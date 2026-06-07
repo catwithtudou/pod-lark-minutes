@@ -1,6 +1,6 @@
 {
   "name": "pod-lark-minutes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Create Feishu/Lark Minutes from podcast and media URLs.",
   "license": "MIT",
   "type": "commonjs",
