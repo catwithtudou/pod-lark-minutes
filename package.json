@@ -1,0 +1,16 @@
+{
+  "name": "pod2miao",
+  "version": "0.1.0",
+  "description": "Turn podcast/media URLs into Feishu/Lark Minutes.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "pod2miao": "./bin/pod2miao.js"
+  },
+  "scripts": {
+    "check": "node --check bin/pod2miao.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

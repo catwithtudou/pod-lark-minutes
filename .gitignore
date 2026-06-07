@@ -1,0 +1,4 @@
+node_modules/
+pod2miao-output/
+.DS_Store
+*.log
