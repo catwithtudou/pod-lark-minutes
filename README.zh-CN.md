@@ -81,6 +81,22 @@ pod-lark-minutes --help
 
 这个项目是一个小型 Node.js CLI，目前不需要编译或转译步骤。npm 会通过 `package.json` 里的 `bin` 入口打包可安装的命令，`npm pack` 和 `npm publish` 会产出可安装的 tarball
 
+## 可选 Agent Skill
+
+这个仓库也提供了一个 agent skill，位置是 [`skills/pod-lark-minutes`](./skills/pod-lark-minutes/SKILL.md)。它用于帮助兼容的编码 agent 安装、验证和运行 CLI；它不替代 Node.js CLI 本身的安装。
+
+从 GitHub 安装 skill：
+
+```bash
+npx -y skills@latest add https://github.com/catwithtudou/pod-lark-minutes/tree/main/skills/pod-lark-minutes --skill pod-lark-minutes --global --yes
+```
+
+也可以从本地 checkout 安装：
+
+```bash
+npx -y skills@latest add ./skills/pod-lark-minutes --skill pod-lark-minutes --global --yes
+```
+
 ## 准备 lark-cli
 
 `pod-lark-minutes` 将飞书/Lark 侧操作委托给 [`lark-cli`](https://github.com/larksuite/cli)。它是 Lark/Feishu 官方开源 CLI，对应 npm 包是 [`@larksuite/cli`](https://www.npmjs.com/package/@larksuite/cli)

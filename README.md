@@ -81,6 +81,22 @@ pod-lark-minutes --help
 
 This project is a small Node.js CLI and does not currently need a compile or transpile step. Packaging is handled by npm through the `bin` entry in `package.json`; `npm pack` and `npm publish` produce an installable tarball.
 
+## Optional Agent Skill
+
+This repository also ships an agent skill at [`skills/pod-lark-minutes`](./skills/pod-lark-minutes/SKILL.md). It helps compatible coding agents install, verify, and run the CLI safely; it does not replace installing the Node.js CLI itself.
+
+Install the skill from GitHub:
+
+```bash
+npx -y skills@latest add https://github.com/catwithtudou/pod-lark-minutes/tree/main/skills/pod-lark-minutes --skill pod-lark-minutes --global --yes
+```
+
+Or install it from a local checkout:
+
+```bash
+npx -y skills@latest add ./skills/pod-lark-minutes --skill pod-lark-minutes --global --yes
+```
+
 ## Prepare lark-cli
 
 `pod-lark-minutes` delegates Feishu/Lark operations to [`lark-cli`](https://github.com/larksuite/cli), the official open-source Lark/Feishu CLI. The npm package is [`@larksuite/cli`](https://www.npmjs.com/package/@larksuite/cli).
