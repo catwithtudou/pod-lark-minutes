@@ -13,7 +13,7 @@
   },
   "homepage": "https://github.com/catwithtudou/pod-lark-minutes#readme",
   "bin": {
-    "pod-lark-minutes": "./bin/pod-lark-minutes.js"
+    "pod-lark-minutes": "bin/pod-lark-minutes.js"
   },
   "scripts": {
     "check": "node --check bin/pod-lark-minutes.js",
